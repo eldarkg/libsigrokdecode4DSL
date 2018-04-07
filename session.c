@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Uwe Hermann <uwe@hermann-uwe.de>
  * Copyright (C) 2013 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -100,7 +101,7 @@ SRD_API int srd_session_new(struct srd_session **sess)
  *
  * @since 0.3.0
  */
-SRD_API int srd_session_start(struct srd_session *sess)
+SRD_API int srd_session_start(struct srd_session *sess, char **error)
 {
 	GSList *d;
 	struct srd_decoder_inst *di;
@@ -117,7 +118,7 @@ SRD_API int srd_session_start(struct srd_session *sess)
 	ret = SRD_OK;
 	for (d = sess->di_list; d; d = d->next) {
 		di = d->data;
-		if ((ret = srd_inst_start(di)) != SRD_OK)
+		if ((ret = srd_inst_start(di, error)) != SRD_OK)
 			break;
 	}
 
@@ -227,9 +228,9 @@ SRD_API int srd_session_metadata_set(struct srd_session *sess, int key,
  *
  * @since 0.4.0
  */
-SRD_API int srd_session_send(struct srd_session *sess,
+SRD_API int srd_session_send(struct srd_session *sess, uint8_t chunk_type,
 		uint64_t start_samplenum, uint64_t end_samplenum,
-		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize)
+		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize, char **error)
 {
 	GSList *d;
 	int ret;
@@ -240,8 +241,8 @@ SRD_API int srd_session_send(struct srd_session *sess,
 	}
 
 	for (d = sess->di_list; d; d = d->next) {
-		if ((ret = srd_inst_decode(d->data, start_samplenum,
-				end_samplenum, inbuf, inbuflen, unitsize)) != SRD_OK)
+		if ((ret = srd_inst_decode(d->data, chunk_type, start_samplenum,
+				end_samplenum, inbuf, inbuflen, unitsize, error)) != SRD_OK)
 			return ret;
 	}
 

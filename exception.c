@@ -2,6 +2,7 @@
  * This file is part of the libsigrokdecode project.
  *
  * Copyright (C) 2012 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +26,7 @@
 #include <frameobject.h> /* Python header not pulled in by default. */
 
 /** @private */
-SRD_PRIV void srd_exception_catch(const char *format, ...)
+SRD_PRIV void srd_exception_catch(const char *format, char **error, ...)
 {
 	PyObject *etype, *evalue, *etb, *py_str;
 	PyTracebackObject *py_tb;
@@ -56,7 +57,7 @@ SRD_PRIV void srd_exception_catch(const char *format, ...)
 	msg = g_string_sized_new(128);
 	g_string_append(msg, ename);
 	g_string_append(msg, ": ");
-	va_start(args, format);
+	va_start(args, error);
 	g_string_append_vprintf(msg, format, args);
 	va_end(args);
 	py_str_as_str(py_str, &str);
@@ -78,6 +79,8 @@ SRD_PRIV void srd_exception_catch(const char *format, ...)
 		srd_dbg("%s", msg->str);
 		g_free(tracestr);
 	}
+	if (error)
+		*error = g_strdup(str);
 	g_free(str);
 	g_string_free(msg, TRUE);
 

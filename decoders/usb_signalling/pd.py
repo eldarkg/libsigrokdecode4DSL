@@ -33,12 +33,15 @@ Packet:
  - 'BIT', <bit>
  - 'STUFF BIT', None
  - 'EOP', None
+ - 'ERR', None
+ - 'KEEP ALIVE', None
+ - 'RESET', None
 
 <sym>:
  - 'J', 'K', 'SE0', or 'SE1'
 
 <bit>:
- - 0 or 1
+ - '0' or '1'
  - Note: Symbols like SE0, SE1, and the J that's part of EOP don't yield 'BIT'.
 '''
 
@@ -59,18 +62,39 @@ symbols = {
         (0, 1): 'K',
         (1, 1): 'SE1',
     },
+    'automatic': {
+        # (<dp>, <dm>): <symbol/state>
+        (0, 0): 'SE0',
+        (1, 0): 'FS_J',
+        (0, 1): 'LS_J',
+        (1, 1): 'SE1',
+    },
+    # After a PREamble PID, the bus segment between Host and Hub uses LS
+    # signalling rate and FS signalling polarity (USB 2.0 spec, 11.8.4: "For
+    # both upstream and downstream low-speed data, the hub is responsible for
+    # inverting the polarity of the data before transmitting to/from a
+    # low-speed port.").
+    'low-speed-rp': {
+        # (<dp>, <dm>): <symbol/state>
+        (0, 0): 'SE0',
+        (1, 0): 'J',
+        (0, 1): 'K',
+        (1, 1): 'SE1',
+    },
 }
 
 bitrates = {
-    'low-speed': 1500000,   # 1.5Mb/s (+/- 1.5%)
+    'low-speed': 1500000, # 1.5Mb/s (+/- 1.5%)
+    'low-speed-rp': 1500000, # 1.5Mb/s (+/- 1.5%)
     'full-speed': 12000000, # 12Mb/s (+/- 0.25%)
+    'automatic': None
 }
 
-sym_idx = {
-    'J': 0,
-    'K': 1,
-    'SE0': 2,
-    'SE1': 3,
+sym_annotation = {
+    'J': [0, ['J']],
+    'K': [1, ['K']],
+    'SE0': [2, ['SE0', '0']],
+    'SE1': [3, ['SE1', '1']],
 }
 
 class SamplerateError(Exception):
@@ -91,7 +115,7 @@ class Decoder(srd.Decoder):
     )
     options = (
         {'id': 'signalling', 'desc': 'Signalling',
-            'default': 'full-speed', 'values': ('full-speed', 'low-speed')},
+            'default': 'automatic', 'values': ('automatic', 'full-speed', 'low-speed')},
     )
     annotations = (
         ('sym-j', 'J symbol'),
@@ -102,26 +126,31 @@ class Decoder(srd.Decoder):
         ('eop', 'End of packet (EOP)'),
         ('bit', 'Bit'),
         ('stuffbit', 'Stuff bit'),
+        ('error', 'Error'),
+        ('keep-alive', 'Low-speed keep-alive'),
+        ('reset', 'Reset'),
     )
     annotation_rows = (
-        ('bits', 'Bits', (4, 5, 6, 7)),
+        ('bits', 'Bits', (4, 5, 6, 7, 8, 9, 10)),
         ('symbols', 'Symbols', (0, 1, 2, 3)),
     )
 
     def __init__(self):
         self.samplerate = None
         self.oldsym = 'J' # The "idle" state is J.
-        self.ss_sop = None
         self.ss_block = None
         self.samplenum = 0
-        self.syms = []
         self.bitrate = None
         self.bitwidth = None
-        self.bitnum = 0
+        self.samplepos = None
         self.samplenum_target = None
+        self.samplenum_edge = None
+        self.samplenum_lastedge = 0
         self.oldpins = None
+        self.edgepins = None
         self.consecutive_ones = 0
-        self.state = 'IDLE'
+        self.bits = None
+        self.state = 'INIT'
 
     def start(self):
         self.out_python = self.register(srd.OUTPUT_PYTHON)
@@ -130,60 +159,72 @@ class Decoder(srd.Decoder):
     def metadata(self, key, value):
         if key == srd.SRD_CONF_SAMPLERATE:
             self.samplerate = value
-            self.bitrate = bitrates[self.options['signalling']]
-            self.bitwidth = float(self.samplerate) / float(self.bitrate)
-            self.halfbit = int(self.bitwidth / 2)
+            self.signalling = self.options['signalling']
+            if self.signalling != 'automatic':
+                self.update_bitrate()
+
+    def update_bitrate(self):
+        self.bitrate = bitrates[self.signalling]
+        self.bitwidth = float(self.samplerate) / float(self.bitrate)
 
     def putpx(self, data):
-        self.put(self.samplenum, self.samplenum, self.out_python, data)
+        s = self.samplenum_edge
+        self.put(s, s, self.out_python, data)
 
     def putx(self, data):
-        self.put(self.samplenum, self.samplenum, self.out_ann, data)
+        s = self.samplenum_edge
+        self.put(s, s, self.out_ann, data)
 
     def putpm(self, data):
-        s, h = self.samplenum, self.halfbit
-        self.put(self.ss_block - h, s + h, self.out_python, data)
+        e = self.samplenum_edge
+        self.put(self.ss_block, e, self.out_python, data)
 
     def putm(self, data):
-        s, h = self.samplenum, self.halfbit
-        self.put(self.ss_block - h, s + h, self.out_ann, data)
+        e = self.samplenum_edge
+        self.put(self.ss_block, e, self.out_ann, data)
 
     def putpb(self, data):
-        s, h = self.samplenum, self.halfbit
-        self.put(s - h, s + h, self.out_python, data)
+        s, e = self.samplenum_lastedge, self.samplenum_edge
+        self.put(s, e, self.out_python, data)
 
     def putb(self, data):
-        s, h = self.samplenum, self.halfbit
-        self.put(s - h, s + h, self.out_ann, data)
+        s, e = self.samplenum_lastedge, self.samplenum_edge
+        self.put(s, e, self.out_ann, data)
 
     def set_new_target_samplenum(self):
-        bitpos = self.ss_sop + (self.bitwidth / 2)
-        bitpos += self.bitnum * self.bitwidth
-        self.samplenum_target = int(bitpos)
+        self.samplepos += self.bitwidth;
+        self.samplenum_target = int(self.samplepos)
+        self.samplenum_lastedge = self.samplenum_edge
+        self.samplenum_edge = int(self.samplepos - (self.bitwidth / 2))
 
     def wait_for_sop(self, sym):
         # Wait for a Start of Packet (SOP), i.e. a J->K symbol change.
-        if sym != 'K':
-            self.oldsym = sym
+        if sym != 'K' or self.oldsym != 'J':
             return
-        self.ss_sop = self.samplenum
+        self.consecutive_ones = 0
+        self.bits = ''
+        self.update_bitrate()
+        self.samplepos = self.samplenum - (self.bitwidth / 2) + 0.5
         self.set_new_target_samplenum()
         self.putpx(['SOP', None])
         self.putx([4, ['SOP', 'S']])
         self.state = 'GET BIT'
 
-    def handle_bit(self, sym, b):
-        if self.consecutive_ones == 6 and b == '0':
-            # Stuff bit.
-            self.putpb(['STUFF BIT', None])
-            self.putb([7, ['Stuff bit: %s' % b, 'SB: %s' % b, '%s' % b]])
-            self.putb([sym_idx[sym], ['%s' % sym]])
-            self.consecutive_ones = 0
+    def handle_bit(self, b):
+        if self.consecutive_ones == 6:
+            if b == '0':
+                # Stuff bit.
+                self.putpb(['STUFF BIT', None])
+                self.putb([7, ['Stuff bit: 0', 'SB: 0', '0']])
+                self.consecutive_ones = 0
+            else:
+                self.putpb(['ERR', None])
+                self.putb([8, ['Bit stuff error', 'BS ERR', 'B']])
+                self.state = 'IDLE'
         else:
             # Normal bit (not a stuff bit).
             self.putpb(['BIT', b])
             self.putb([6, ['%s' % b]])
-            self.putb([sym_idx[sym], ['%s' % sym]])
             if b == '1':
                 self.consecutive_ones += 1
             else:
@@ -191,52 +232,115 @@ class Decoder(srd.Decoder):
 
     def get_eop(self, sym):
         # EOP: SE0 for >= 1 bittime (usually 2 bittimes), then J.
-        self.syms.append(sym)
-        self.putpb(['SYM', sym])
-        self.putb([sym_idx[sym], ['%s' % sym, '%s' % sym[0]]])
-        self.bitnum += 1
         self.set_new_target_samplenum()
+        self.putpb(['SYM', sym])
+        self.putb(sym_annotation[sym])
         self.oldsym = sym
-        if self.syms[-2:] == ['SE0', 'J']:
+        if sym == 'SE0':
+            pass
+        elif sym == 'J':
             # Got an EOP.
             self.putpm(['EOP', None])
             self.putm([5, ['EOP', 'E']])
-            self.bitnum, self.syms, self.state = 0, [], 'IDLE'
-            self.consecutive_ones = 0
+            self.state = 'WAIT IDLE'
+        else:
+            self.putpm(['ERR', None])
+            self.putm([8, ['EOP Error', 'EErr', 'E']])
+            self.state = 'IDLE'
 
     def get_bit(self, sym):
-        if sym == 'SE0':
-            # Start of an EOP. Change state, run get_eop() for this bit.
-            self.state = 'GET EOP'
-            self.ss_block = self.samplenum
-            self.get_eop(sym)
-            return
-        self.syms.append(sym)
-        self.putpb(['SYM', sym])
-        b = '0' if self.oldsym != sym else '1'
-        self.handle_bit(sym, b)
-        self.bitnum += 1
         self.set_new_target_samplenum()
+        b = '0' if self.oldsym != sym else '1'
         self.oldsym = sym
+        if sym == 'SE0':
+            # Start of an EOP. Change state, save edge
+            self.state = 'GET EOP'
+            self.ss_block = self.samplenum_lastedge
+        else:
+            self.handle_bit(b)
+        self.putpb(['SYM', sym])
+        self.putb(sym_annotation[sym])
+        if len(self.bits) <= 16:
+            self.bits += b
+        if len(self.bits) == 16 and self.bits == '0000000100111100':
+            # Sync and low-speed PREamble seen
+            self.putpx(['EOP', None])
+            self.state = 'IDLE'
+            self.signalling = 'low-speed-rp'
+            self.update_bitrate()
+            self.oldsym = 'J'
+        if b == '0':
+            edgesym = symbols[self.signalling][tuple(self.edgepins)]
+            if edgesym not in ('SE0', 'SE1'):
+                if edgesym == sym:
+                    self.bitwidth = self.bitwidth - (0.001 * self.bitwidth)
+                    self.samplepos = self.samplepos - (0.01 * self.bitwidth)
+                else:
+                    self.bitwidth = self.bitwidth + (0.001 * self.bitwidth)
+                    self.samplepos = self.samplepos + (0.01 * self.bitwidth)
+
+    def handle_idle(self, sym):
+        self.samplenum_edge = self.samplenum
+        se0_length = float(self.samplenum - self.samplenum_lastedge) / self.samplerate
+        if se0_length > 2.5e-6: # 2.5us
+            self.putpb(['RESET', None])
+            self.putb([10, ['Reset', 'Res', 'R']])
+            self.signalling = self.options['signalling']
+        elif se0_length > 1.2e-6 and self.signalling == 'low-speed':
+            self.putpb(['KEEP ALIVE', None])
+            self.putb([9, ['Keep-alive', 'KA', 'A']])
+
+        if sym == 'FS_J':
+            self.signalling = 'full-speed'
+            self.update_bitrate()
+        elif sym == 'LS_J':
+            self.signalling = 'low-speed'
+            self.update_bitrate()
+        self.oldsym = 'J'
+        self.state = 'IDLE'
 
     def decode(self, ss, es, data):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
         for (self.samplenum, pins) in data:
+            data.itercnt += 1
             # State machine.
             if self.state == 'IDLE':
                 # Ignore identical samples early on (for performance reasons).
                 if self.oldpins == pins:
                     continue
                 self.oldpins = pins
-                sym = symbols[self.options['signalling']][tuple(pins)]
-                self.wait_for_sop(sym)
+                sym = symbols[self.signalling][tuple(pins)]
+                if sym == 'SE0':
+                    self.samplenum_lastedge = self.samplenum
+                    self.state = 'WAIT IDLE'
+                else:
+                    self.wait_for_sop(sym)
+                self.edgepins = pins
             elif self.state in ('GET BIT', 'GET EOP'):
                 # Wait until we're in the middle of the desired bit.
+                if self.samplenum == self.samplenum_edge:
+                    self.edgepins = pins
                 if self.samplenum < self.samplenum_target:
                     continue
-                sym = symbols[self.options['signalling']][tuple(pins)]
+                sym = symbols[self.signalling][tuple(pins)]
                 if self.state == 'GET BIT':
                     self.get_bit(sym)
                 elif self.state == 'GET EOP':
                     self.get_eop(sym)
+                self.oldpins = pins
+            elif self.state == 'WAIT IDLE':
+                if tuple(pins) == (0, 0):
+                    continue
+                if self.samplenum - self.samplenum_lastedge > 1:
+                    sym = symbols[self.options['signalling']][tuple(pins)]
+                    self.handle_idle(sym)
+                else:
+                    sym = symbols[self.signalling][tuple(pins)]
+                    self.wait_for_sop(sym)
+                self.oldpins = pins
+                self.edgepins = pins
+            elif self.state == 'INIT':
+                sym = symbols[self.options['signalling']][tuple(pins)]
+                self.handle_idle(sym)
+                self.oldpins = pins

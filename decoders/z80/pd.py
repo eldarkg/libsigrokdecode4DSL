@@ -110,7 +110,7 @@ class Decoder(srd.Decoder):
         ('warnings', 'Warnings', (Ann.WARN,))
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.prev_cycle = Cycle.NONE
         self.op_state   = self.state_IDLE
 
@@ -131,6 +131,7 @@ class Decoder(srd.Decoder):
 
     def decode(self, ss, es, data):
         for (self.samplenum, pins) in data:
+            data.itercnt += 1
             cycle = Cycle.NONE
             if pins[Pin.MREQ] != 1: # default to asserted
                 if pins[Pin.RD] == 0:
@@ -155,6 +156,7 @@ class Decoder(srd.Decoder):
                 else:
                     self.on_cycle_trans()
             self.prev_cycle = cycle
+
 
     def on_cycle_begin(self, bus_addr):
         if self.pend_addr is not None:

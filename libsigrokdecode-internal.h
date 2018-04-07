@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2011 Uwe Hermann <uwe@hermann-uwe.de>
  * Copyright (C) 2012 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +25,7 @@
 
 #include <Python.h> /* First, so we avoid a _POSIX_C_SOURCE warning. */
 #include "libsigrokdecode.h"
+#include <structmember.h>
 
 /* Custom Python types: */
 
@@ -31,21 +33,16 @@ typedef struct {
 	PyObject_HEAD
 	struct srd_decoder_inst *di;
 	uint64_t start_samplenum;
-	unsigned int itercnt;
+	float itercnt;
 	uint8_t *inbuf;
 	uint64_t inbuflen;
 	PyObject *sample;
+
+	uint64_t exp_logic;
+	int edge_index;
+	uint64_t logic_mask;
+	uint64_t cur_pos;
 } srd_logic;
-
-struct srd_session {
-	int session_id;
-
-	/* List of decoder instances. */
-	GSList *di_list;
-
-	/* List of frontend callbacks to receive decoder output. */
-	GSList *callbacks;
-};
 
 /* srd.c */
 SRD_PRIV int srd_decoder_searchpath_add(const char *path);
@@ -58,10 +55,10 @@ SRD_PRIV struct srd_pd_callback *srd_pd_output_callback_find(struct srd_session 
 /* instance.c */
 SRD_PRIV struct srd_decoder_inst *srd_inst_find_by_obj( const GSList *stack,
 		const PyObject *obj);
-SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di);
-SRD_PRIV int srd_inst_decode(const struct srd_decoder_inst *di,
+SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di, char **error);
+SRD_PRIV int srd_inst_decode(const struct srd_decoder_inst *di, uint8_t chunk_type,
 		uint64_t start_samplenum, uint64_t end_samplenum,
-		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize);
+		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize, char **error);
 SRD_PRIV void srd_inst_free(struct srd_decoder_inst *di);
 SRD_PRIV void srd_inst_free_all(struct srd_session *sess, GSList *stack);
 
@@ -95,6 +92,6 @@ SRD_PRIV int py_str_as_str(const PyObject *py_str, char **outstr);
 SRD_PRIV int py_strseq_to_char(const PyObject *py_strseq, char ***outstr);
 
 /* exception.c */
-SRD_PRIV void srd_exception_catch(const char *format, ...);
+SRD_PRIV void srd_exception_catch(const char *format, char **error, ...);
 
 #endif

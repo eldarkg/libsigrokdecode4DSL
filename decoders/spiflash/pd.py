@@ -56,7 +56,7 @@ class Decoder(srd.Decoder):
     longname = 'SPI flash chips'
     desc = 'xx25 series SPI (NOR) flash chip protocol.'
     license = 'gplv2+'
-    inputs = ['logic']
+    inputs = ['spi']
     outputs = ['spiflash']
     annotations = cmd_annotation_classes() + (
         ('bits', 'Bits'),
@@ -73,7 +73,7 @@ class Decoder(srd.Decoder):
             'values': tuple(chips.keys())},
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.state = None
         self.cmdstate = 1
         self.addr = 0

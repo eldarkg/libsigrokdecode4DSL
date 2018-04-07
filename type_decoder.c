@@ -2,6 +2,7 @@
  * This file is part of the libsigrokdecode project.
  *
  * Copyright (C) 2012 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,10 +39,11 @@ static int convert_annotation(struct srd_decoder_inst *di, PyObject *obj,
 		struct srd_proto_data *pdata)
 {
 	PyObject *py_tmp;
-	struct srd_pd_output *pdo;
+	//struct srd_pd_output *pdo;
 	struct srd_proto_data_annotation *pda;
-	int ann_class;
+	unsigned int ann_class;
 	char **ann_text;
+	gpointer ann_type_ptr;
 
 	/* Should be a list of [annotation class, [string, ...]]. */
 	if (!PyList_Check(obj) && !PyTuple_Check(obj)) {
@@ -69,11 +71,17 @@ static int convert_annotation(struct srd_decoder_inst *di, PyObject *obj,
 		return SRD_ERR_PYTHON;
 	}
 	ann_class = PyLong_AsLong(py_tmp);
-	if (!(pdo = g_slist_nth_data(di->decoder->annotations, ann_class))) {
+//	if (!(pdo = g_slist_nth_data(di->decoder->annotations, ann_class))) {
+//		srd_err("Protocol decoder %s submitted data to unregistered "
+//			"annotation class %d.", di->decoder->name, ann_class);
+//		return SRD_ERR_PYTHON;
+//	}
+	if (ann_class >= g_slist_length(di->decoder->ann_types)) {
 		srd_err("Protocol decoder %s submitted data to unregistered "
 			"annotation class %d.", di->decoder->name, ann_class);
 		return SRD_ERR_PYTHON;
 	}
+	ann_type_ptr = g_slist_nth_data(di->decoder->ann_types, ann_class);
 
 	/* Second element must be a list. */
 	py_tmp = PyList_GetItem(obj, 1);
@@ -90,8 +98,11 @@ static int convert_annotation(struct srd_decoder_inst *di, PyObject *obj,
 
 	pda = g_malloc(sizeof(struct srd_proto_data_annotation));
 	pda->ann_class = ann_class;
+	pda->ann_type = GPOINTER_TO_INT(ann_type_ptr);
 	pda->ann_text = ann_text;
 	pdata->data = pda;
+
+	//Py_DECREF(py_tmp);
 
 	return SRD_OK;
 }
@@ -160,6 +171,8 @@ static int convert_binary(struct srd_decoder_inst *di, PyObject *obj,
 	memcpy((void *)pdb->data, (const void *)buf, pdb->size);
 	pdata->data = pdb;
 
+	//Py_DECREF(py_tmp);
+
 	return SRD_OK;
 }
 
@@ -203,6 +216,9 @@ static PyObject *Decoder_put(PyObject *self, PyObject *args)
 	uint64_t start_sample, end_sample;
 	int output_id;
 	struct srd_pd_callback *cb;
+	struct srd_proto_data_binary *pdb;
+	struct srd_proto_data_annotation *pda;
+	char **annotations;
 
 	if (!(di = srd_inst_find_by_obj(NULL, self))) {
 		/* Shouldn't happen. */
@@ -246,6 +262,14 @@ static PyObject *Decoder_put(PyObject *self, PyObject *args)
 				break;
 			}
 			cb->cb(pdata, cb->cb_data);
+			pda = pdata->data;
+			annotations = (char**)pda->ann_text;
+			while(*annotations) {
+				g_free(*annotations);
+				annotations++;
+			}
+			g_free(pda->ann_text);
+			g_free(pda);
 		}
 		break;
 	case SRD_OUTPUT_PYTHON:
@@ -256,7 +280,7 @@ static PyObject *Decoder_put(PyObject *self, PyObject *args)
 			if (!(py_res = PyObject_CallMethod(
 				next_di->py_inst, "decode", "KKO", start_sample,
 				end_sample, py_data))) {
-				srd_exception_catch("Calling %s decode(): ",
+				srd_exception_catch("Calling %s decode(): ", NULL,
 							next_di->inst_id);
 			}
 			Py_XDECREF(py_res);
@@ -276,6 +300,9 @@ static PyObject *Decoder_put(PyObject *self, PyObject *args)
 				break;
 			}
 			cb->cb(pdata, cb->cb_data);
+			pdb = pdata->data;
+			g_free(pdb->data);
+			g_free(pdb);
 		}
 		break;
 	case SRD_OUTPUT_META:
@@ -295,6 +322,7 @@ static PyObject *Decoder_put(PyObject *self, PyObject *args)
 	}
 
 	g_free(pdata);
+	//Py_XDECREF(py_data);
 
 	Py_RETURN_NONE;
 }

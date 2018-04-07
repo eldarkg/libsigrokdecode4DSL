@@ -63,7 +63,7 @@ class Decoder(srd.Decoder):
         ('ascii-float', 'Jitter values as newline-separated ASCII floats'),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.state = 'CLK'
         self.samplerate = None
         self.oldpin = None
@@ -77,7 +77,7 @@ class Decoder(srd.Decoder):
         self.clk_edge = edge_detector[self.options['clk_polarity']]
         self.sig_edge = edge_detector[self.options['sig_polarity']]
         self.out_ann = self.register(srd.OUTPUT_ANN)
-        self.out_bin = self.register(srd.OUTPUT_BINARY)
+        self.out_binary = self.register(srd.OUTPUT_BINARY)
         self.out_clk_missed = self.register(srd.OUTPUT_META,
             meta=(int, 'Clock missed', 'Clock transition missed'))
         self.out_sig_missed = self.register(srd.OUTPUT_META,
@@ -91,17 +91,17 @@ class Decoder(srd.Decoder):
     def putx(self, delta):
         # Adjust granularity.
         if delta == 0 or delta >= 1:
-            delta_s = u"%us" % (delta)
+            delta_s = '%.1fs' % (delta)
         elif delta <= 1e-12:
-            delta_s = u"%.1ffs" % (delta * 1e15)
+            delta_s = '%.1ffs' % (delta * 1e15)
         elif delta <= 1e-9:
-            delta_s = u"%.1fps" % (delta * 1e12)
+            delta_s = '%.1fps' % (delta * 1e12)
         elif delta <= 1e-6:
-            delta_s = u"%.1fns" % (delta * 1e9)
+            delta_s = '%.1fns' % (delta * 1e9)
         elif delta <= 1e-3:
-            delta_s = u"%.1fμs" % (delta * 1e6)
+            delta_s = '%.1fμs' % (delta * 1e6)
         else:
-            delta_s = u"%.1fms" % (delta * 1e3)
+            delta_s = '%.1fms' % (delta * 1e3)
 
         self.put(self.clk_start, self.sig_start, self.out_ann, [0, [delta_s]])
 
@@ -111,8 +111,8 @@ class Decoder(srd.Decoder):
             return
         # Format the delta to an ASCII float value terminated by a newline.
         x = str(delta) + '\n'
-        self.put(self.clk_start, self.sig_start, self.out_bin,
-                 (0, x.encode('UTF-8')))
+        #self.put(self.clk_start, self.sig_start, self.out_binary,
+        #         [0, x.encode('UTF-8')])
 
     # Helper function for missed clock and signal annotations.
     def putm(self, data):
@@ -179,6 +179,7 @@ class Decoder(srd.Decoder):
             raise SamplerateError('Cannot decode without samplerate.')
 
         for (self.samplenum, pins) in data:
+            data.itercnt += 1
             # We are only interested in transitions.
             if self.oldpin == pins:
                 continue

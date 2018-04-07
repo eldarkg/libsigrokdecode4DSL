@@ -136,7 +136,7 @@ class Decoder(srd.Decoder):
         ('warnings', 'Warnings', (0,)),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.state = 'IDLE'
         self.oldlclk = -1
         self.samplenum = 0
@@ -315,7 +315,7 @@ class Decoder(srd.Decoder):
 
     def decode(self, ss, es, data):
         for (self.samplenum, pins) in data:
-
+            data.itercnt += 1
             # If none of the pins changed, there's nothing to do.
             if self.oldpins == pins:
                 continue
@@ -365,3 +365,4 @@ class Decoder(srd.Decoder):
                 self.handle_get_data(lad, lad_bits)
             elif self.state == 'GET TAR2':
                 self.handle_get_tar2(lad, lad_bits)
+

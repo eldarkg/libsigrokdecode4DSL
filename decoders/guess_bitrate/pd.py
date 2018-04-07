@@ -42,7 +42,7 @@ class Decoder(srd.Decoder):
     def putx(self, data):
         self.put(self.ss_edge, self.samplenum, self.out_ann, data)
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.olddata = None
         self.ss_edge = None
         self.first_transition = True
@@ -55,16 +55,14 @@ class Decoder(srd.Decoder):
         if key == srd.SRD_CONF_SAMPLERATE:
             self.samplerate = value
 
-    def decode(self, ss, es, data):
+    def decode(self, ss, es, logic):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
-        for (self.samplenum, pins) in data:
-
-            data = pins[0]
-
-            # Wait for any transition on the data line.
-            if data == self.olddata:
-                continue
+        for (self.samplenum, pins) in logic:
+            (data,) = pins
+            logic.logic_mask = 1
+            logic.cur_pos = self.samplenum
+            logic.edge_index = -1
 
             # Initialize first self.olddata with the first sample value.
             if self.olddata is None:
@@ -83,5 +81,3 @@ class Decoder(srd.Decoder):
                     bitrate = int(float(self.samplerate) / float(b))
                     self.putx([0, ['%d' % bitrate]])
                 self.ss_edge = self.samplenum
-
-            self.olddata = data

@@ -50,7 +50,7 @@ class Decoder(srd.Decoder):
         ('position', 'Position', (1,)),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.oldstep = None
         self.prev_step_ss = None
         self.pos = 0
@@ -92,6 +92,7 @@ class Decoder(srd.Decoder):
             raise SamplerateError('Cannot decode without samplerate.')
 
         for (self.samplenum, (step, direction)) in data:
+            data.itercnt += 1
             if step == 1 and self.oldstep == 0:
                 self.step(self.samplenum, direction)
             self.oldstep = step

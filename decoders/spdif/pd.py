@@ -58,7 +58,7 @@ class Decoder(srd.Decoder):
     def puty(self, data):
         self.put(self.ss_edge, self.samplenum, self.out_ann, data)
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.state = 'GET FIRST PULSE WIDTH'
         self.olddata = None
         self.ss_edge = None
@@ -218,12 +218,13 @@ class Decoder(srd.Decoder):
 
         self.last_preamble = self.samplenum
 
-    def decode(self, ss, es, data):
+    def decode(self, ss, es, logic):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
 
-        for (self.samplenum, pins) in data:
+        for (self.samplenum, pins) in logic:
             data = pins[0]
+            logic.itercnt += 1
 
             # Initialize self.olddata with the first sample value.
             if self.olddata is None:

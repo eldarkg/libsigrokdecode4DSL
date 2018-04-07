@@ -92,7 +92,7 @@ class Decoder(srd.Decoder):
         ('parity', 'PARITY'),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         # SWD data/clock state
         self.state = 'UNKNOWN'
         self.oldclk = -1
@@ -144,6 +144,7 @@ class Decoder(srd.Decoder):
 
     def decode(self, ss, es, data):
         for (self.samplenum, (clk, dio)) in data:
+            data.itercnt += 1
             if clk == self.oldclk:
                 continue # Not a clock edge.
             self.oldclk = clk

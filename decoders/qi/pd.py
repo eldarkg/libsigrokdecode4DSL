@@ -73,7 +73,7 @@ class Decoder(srd.Decoder):
         ('packets', 'Packets', (5, 6, 7)),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.samplerate = None
         self.reset_variables()
 
@@ -241,4 +241,5 @@ class Decoder(srd.Decoder):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
         for (self.samplenum, (qi,)) in data:
+            data.itercnt += 1
             self.next_sample(qi)

@@ -56,7 +56,7 @@ class Decoder(srd.Decoder):
         ('fields', 'Fields', (1, 2, 3, 4, 5, 6)),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.samplerate = None
         self.samplenum = None
         self.edges, self.bits, self.ss_es_bits = [], [], []
@@ -141,6 +141,7 @@ class Decoder(srd.Decoder):
         for (self.samplenum, pins) in data:
 
             self.ir = pins[0]
+            data.itercnt += 1
 
             # Wait for any edge (rising or falling).
             if self.old_ir == self.ir:

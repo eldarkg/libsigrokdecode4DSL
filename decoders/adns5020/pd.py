@@ -45,13 +45,13 @@ class Decoder(srd.Decoder):
     name = 'ADNS-5020'
     longname = 'Avago ADNS-5020 optical mouse sensor'
     desc = 'Bidirectional command and data over an SPI-like protocol.'
-    license = 'gplv2'
+    license = 'gplv2+'
     inputs = ['spi']
     outputs = ['adns5020']
     annotations = (
-        ('read', 'Register read commands'),
-        ('write', 'Register write commands'),
-        ('warning', 'Warnings'),
+        ('106', 'read', 'Register read commands'),
+        ('108', 'write', 'Register write commands'),
+        ('0', 'warning', 'Warnings'),
     )
     annotation_rows = (
         ('read', 'Read', (0,)),
@@ -59,7 +59,7 @@ class Decoder(srd.Decoder):
         ('warnings', 'Warnings', (2,)),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.ss_cmd, self.es_cmd = 0, 0
         self.mosi_bytes = []
 

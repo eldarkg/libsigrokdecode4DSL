@@ -26,8 +26,8 @@ class SamplerateError(Exception):
 class Decoder(srd.Decoder):
     api_version = 2
     id = 'onewire_link'
-    name = '1-Wire link layer'
-    longname = '1-Wire serial communication bus (link layer)'
+    name = 'One-Wire link layer'
+    longname = 'One-Wire serial communication bus (link layer)'
     desc = 'Bidirectional, half-duplex, asynchronous serial bus.'
     license = 'gplv2+'
     inputs = ['logic']
@@ -93,7 +93,7 @@ class Decoder(srd.Decoder):
     def putrs(self, data):
         self.put(self.rise, self.samplenum, self.out_ann, data)
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.samplerate = None
         self.samplenum = 0
         self.state = 'WAIT FOR FALLING EDGE'
@@ -193,6 +193,7 @@ class Decoder(srd.Decoder):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
         for (self.samplenum, (owr, pwr)) in data:
+            data.itercnt += 1
             if self.samplenum == 0:
                 self.checks()
             # State machine.

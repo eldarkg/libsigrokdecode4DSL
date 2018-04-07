@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Uwe Hermann <uwe@hermann-uwe.de>
  * Copyright (C) 2012 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -311,6 +312,8 @@ SRD_API int srd_decoder_load(const char *module_name)
 	struct srd_channel *pdch;
 	GSList *l, *ann_classes;
 	struct srd_decoder_annotation_row *ann_row;
+	int ann_type = 7;
+	int ann_len;
 
 	if (!srd_check_init())
 		return SRD_ERR;
@@ -333,7 +336,7 @@ SRD_API int srd_decoder_load(const char *module_name)
 
 	/* Import the Python module. */
 	if (!(d->py_mod = PyImport_ImportModule(module_name))) {
-		srd_exception_catch("Import of '%s' failed.", module_name);
+		srd_exception_catch("Import of '%s' failed.", NULL, module_name);
 		goto err_out;
 	}
 
@@ -449,7 +452,7 @@ SRD_API int srd_decoder_load(const char *module_name)
 		}
 		for (i = 0; i < PyTuple_Size(py_annlist); i++) {
 			py_ann = PyTuple_GetItem(py_annlist, i);
-			if (!PyTuple_Check(py_ann) || PyTuple_Size(py_ann) != 2) {
+			if (!PyTuple_Check(py_ann) || (PyTuple_Size(py_ann) != 3 && PyTuple_Size(py_ann) != 2)) {
 				srd_err("Protocol decoder %s annotation %d should "
 						"be a tuple with two elements.", module_name, i + 1);
 				goto err_out;
@@ -459,6 +462,16 @@ SRD_API int srd_decoder_load(const char *module_name)
 				goto err_out;
 			}
 			d->annotations = g_slist_append(d->annotations, ann);
+			if (PyTuple_Size(py_ann) == 3) {
+					ann_type = 0;
+					ann_len = strlen(ann[0]);
+					for (j = 0; j < ann_len; j++)
+						ann_type = ann_type * 10 + (ann[0][j] - '0');
+					d->ann_types = g_slist_append(d->ann_types, GINT_TO_POINTER(ann_type));
+			} else if (PyTuple_Size(py_ann) == 2) {
+				d->ann_types = g_slist_append(d->ann_types, GINT_TO_POINTER(ann_type));
+				ann_type++;
+			}
 		}
 	}
 
@@ -588,7 +601,7 @@ SRD_API char *srd_decoder_doc_get(const struct srd_decoder *dec)
 		return NULL;
 
 	if (!(py_str = PyObject_GetAttrString(dec->py_mod, "__doc__"))) {
-		srd_exception_catch("");
+		srd_exception_catch("", NULL);
 		return NULL;
 	}
 
@@ -630,6 +643,7 @@ static void free_channels(GSList *channellist)
 SRD_API int srd_decoder_unload(struct srd_decoder *dec)
 {
 	struct srd_decoder_option *o;
+	struct srd_decoder_annotation_row *row;
 	struct srd_session *sess;
 	GSList *l;
 
@@ -660,6 +674,21 @@ SRD_API int srd_decoder_unload(struct srd_decoder *dec)
 		g_free(o);
 	}
 	g_slist_free(dec->options);
+
+	g_slist_foreach(dec->annotations, (GFunc)g_free, NULL);
+	g_slist_free(dec->annotations);
+
+	for (l = dec->annotation_rows; l; l = l->next) {
+		row = l->data;
+		g_free(row->id);
+		g_free(row->desc);
+		g_slist_free(row->ann_classes);
+		g_free(row);
+	}
+	g_slist_free(dec->annotation_rows);
+
+	g_slist_foreach(dec->binary, (GFunc)g_free, NULL);
+	g_slist_free(dec->binary);
 
 	free_channels(dec->channels);
 	free_channels(dec->opt_channels);

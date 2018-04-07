@@ -51,14 +51,14 @@ class Decoder(srd.Decoder):
             'default': 'am230x', 'values': ('am230x/rht', 'dht11')},
     )
     annotations = (
-        ('start', 'Start'),
-        ('response', 'Response'),
-        ('bit', 'Bit'),
-        ('end', 'End'),
-        ('byte', 'Byte'),
-        ('humidity', 'Relative humidity in percent'),
-        ('temperature', 'Temperature in degrees Celsius'),
-        ('checksum', 'Checksum'),
+        ('7', 'start', 'Start'),
+        ('5', 'response', 'Response'),
+        ('107', 'bit', 'Bit'),
+        ('3', 'end', 'End'),
+        ('106', 'byte', 'Byte'),
+        ('108', 'humidity', 'Relative humidity in percent'),
+        ('109', 'temperature', 'Temperature in degrees Celsius'),
+        ('112', 'checksum', 'Checksum'),
     )
     annotation_rows = (
         ('bits', 'Bits', (0, 1, 2, 3)),
@@ -123,7 +123,7 @@ class Decoder(srd.Decoder):
             checksum += self.bits2num(bitlist[i-8:i])
         return checksum % 256
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.samplerate = None
         self.reset()
 
@@ -168,6 +168,7 @@ class Decoder(srd.Decoder):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
         for (self.samplenum, (sda,)) in data:
+            data.itercnt += 1
             # State machine.
             if self.state == 'WAIT FOR START LOW':
                 if sda != 0:

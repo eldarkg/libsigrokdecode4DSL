@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Uwe Hermann <uwe@hermann-uwe.de>
  * Copyright (C) 2012 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,7 +49,7 @@ SRD_PRIV int py_attr_as_str(const PyObject *py_obj, const char *attr,
 	}
 
 	if (!(py_str = PyObject_GetAttrString((PyObject *)py_obj, attr))) {
-		srd_exception_catch("");
+		srd_exception_catch("", NULL);
 		return SRD_ERR_PYTHON;
 	}
 
@@ -152,7 +153,7 @@ err_out:
 		Py_XDECREF(py_encstr);
 
 	if (PyErr_Occurred()) {
-		srd_exception_catch("string conversion failed");
+		srd_exception_catch("string conversion failed", NULL);
 	}
 
 	return ret;
@@ -172,7 +173,7 @@ err_out:
  */
 SRD_PRIV int py_strseq_to_char(const PyObject *py_strseq, char ***outstr)
 {
-	PyObject *py_str;
+	PyObject *py_seq, *py_str;
 	int list_len, i;
 	char **out, *str;
 
@@ -182,12 +183,20 @@ SRD_PRIV int py_strseq_to_char(const PyObject *py_strseq, char ***outstr)
 		return SRD_ERR_MALLOC;
 	}
 	for (i = 0; i < list_len; i++) {
-		if (!(py_str = PyUnicode_AsEncodedString(
-		    PySequence_GetItem((PyObject *)py_strseq, i), "utf-8", NULL)))
+//		if (!(py_str = PyUnicode_AsEncodedString(
+//		    PySequence_GetItem((PyObject *)py_strseq, i), "utf-8", NULL)))
+//			return SRD_ERR_PYTHON;
+//		if (!(str = PyBytes_AS_STRING(py_str)))
+//			return SRD_ERR_PYTHON;
+		py_seq = PySequence_GetItem((PyObject *)py_strseq, i);
+		if (!(py_str = PyUnicode_AsEncodedString(py_seq, "utf-8", NULL)))
 			return SRD_ERR_PYTHON;
 		if (!(str = PyBytes_AS_STRING(py_str)))
 			return SRD_ERR_PYTHON;
+
 		out[i] = g_strdup(str);
+		Py_XDECREF(py_seq);
+		Py_XDECREF(py_str);
 	}
 	out[i] = NULL;
 	*outstr = out;

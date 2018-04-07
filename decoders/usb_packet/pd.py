@@ -33,7 +33,9 @@ Packet:
  - 'ADDR', <addr>
  - 'EP', <ep>
  - 'CRC5', <crc5>
+ - 'CRC5 ERROR', <crc5>
  - 'CRC16', <crc16>
+ - 'CRC16 ERROR', <crc16>
  - 'EOP', <eop>
  - 'FRAMENUM', <framenum>
  - 'DATABYTE', <databyte>
@@ -111,7 +113,7 @@ pids = {
 
     # Special
     '00111100': ['PRE', 'Host-issued preamble; enables downstream bus traffic to low-speed devices'],
-    '00111100': ['ERR', 'Split transaction error handshake'],
+    #'00111100': ['ERR', 'Split transaction error handshake'],
     '00011110': ['SPLIT', 'HS split transaction token'],
     '00101101': ['PING', 'HS flow control probe for a bulk/control EP'],
     '00001111': ['Reserved', 'Reserved PID'],
@@ -141,6 +143,35 @@ def bitstr_to_num(bitstr):
     l = list(bitstr)
     l.reverse()
     return int(''.join(l), 2)
+
+def reverse_number(num, count):
+    out = list(count * '0')
+    for i in range(0, count):
+        if num >> i & 1:
+            out[i] = '1';
+    return int(''.join(out), 2)
+
+def calc_crc5(bitstr):
+    poly5 = 0x25
+    crc5 = 0x1f
+    for bit in bitstr:
+        crc5 <<= 1
+        if int(bit) != (crc5 >> 5):
+            crc5 ^= poly5
+        crc5 &= 0x1f
+    crc5 ^= 0x1f
+    return reverse_number(crc5, 5)
+
+def calc_crc16(bitstr):
+    poly16 = 0x18005
+    crc16 = 0xffff
+    for bit in bitstr:
+        crc16 <<= 1
+        if int(bit) != (crc16 >> 16):
+            crc16 ^= poly16
+        crc16 &= 0xffff
+    crc16 ^= 0xffff
+    return reverse_number(crc16, 16)
 
 class Decoder(srd.Decoder):
     api_version = 2
@@ -250,7 +281,7 @@ class Decoder(srd.Decoder):
         self.packet.append(pid)
         self.packet_summary += pidname
 
-        if pidname in ('OUT', 'IN', 'SOF', 'SETUP', 'PRE', 'PING'):
+        if pidname in ('OUT', 'IN', 'SOF', 'SETUP', 'PING'):
             if len(packet) < 32:
                 self.putp([28, ['Invalid packet (shorter than 32 bits)']])
                 return
@@ -283,9 +314,14 @@ class Decoder(srd.Decoder):
 
             # Bits[27:31]: CRC5
             crc5 = bitstr_to_num(packet[27:31 + 1])
+            crc5_calc = calc_crc5(packet[16:27])
             self.ss, self.es = self.bits[27][1], self.bits[31][2]
-            self.putpb(['CRC5', crc5])
-            self.putb([6, ['CRC5: 0x%02X' % crc5, 'CRC5', 'C']])
+            if crc5 == crc5_calc:
+                self.putpb(['CRC5', crc5])
+                self.putb([6, ['CRC5: 0x%02X' % crc5, 'CRC5', 'C']])
+            else:
+                self.putpb(['CRC5 ERROR', crc5])
+                self.putb([7, ['CRC5 ERROR: 0x%02X' % crc5, 'CRC5 ERR', 'CE', 'C']])
             self.packet.append(crc5)
         elif pidname in ('DATA0', 'DATA1', 'DATA2', 'MDATA'):
             # Bits[16:packetlen-16]: Data
@@ -310,12 +346,19 @@ class Decoder(srd.Decoder):
 
             # Bits[packetlen-16:packetlen]: CRC16
             crc16 = bitstr_to_num(packet[-16:])
+            crc16_calc = calc_crc16(packet[16:-16])
             self.ss, self.es = self.bits[-16][1], self.bits[-1][2]
-            self.putpb(['CRC16', crc16])
-            self.putb([9, ['CRC16: 0x%04X' % crc16, 'CRC16', 'C']])
+            if crc16 == crc16_calc:
+                self.putpb(['CRC16', crc16])
+                self.putb([9, ['CRC16: 0x%04X' % crc16, 'CRC16', 'C']])
+            else:
+                self.putpb(['CRC16 ERROR', crc16])
+                self.putb([10, ['CRC16 ERROR: 0x%04X' % crc16, 'CRC16 ERR', 'CE', 'C']])
             self.packet.append(crc16)
         elif pidname in ('ACK', 'NAK', 'STALL', 'NYET', 'ERR'):
             pass # Nothing to do, these only have SYNC+PID+EOP fields.
+        elif pidname in ('PRE'):
+            pass # Nothing to do, PRE only has SYNC+PID fields.
         else:
             pass # TODO: Handle 'SPLIT' and possibly 'Reserved' packets.
 
@@ -330,7 +373,7 @@ class Decoder(srd.Decoder):
         (ptype, pdata) = data
 
         # We only care about certain packet types for now.
-        if ptype not in ('SOP', 'BIT', 'EOP'):
+        if ptype not in ('SOP', 'BIT', 'EOP', 'ERR'):
             return
 
         # State machine.
@@ -342,7 +385,7 @@ class Decoder(srd.Decoder):
         elif self.state == 'GET BIT':
             if ptype == 'BIT':
                 self.bits.append([pdata, ss, es])
-            elif ptype == 'EOP':
+            elif ptype == 'EOP' or ptype == 'ERR':
                 self.es_packet = es
                 self.handle_packet()
                 self.packet, self.packet_summary = [], ''

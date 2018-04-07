@@ -49,8 +49,8 @@ class Decoder(srd.Decoder):
         ('raw', 'RAW file'),
     )
 
-    def __init__(self, **kwargs):
-        self.ss = self.es = None
+    def __init__(self):
+        self.ss_block = self.es_block = None
         self.first_transition = True
         self.first_samplenum = None
         self.start_samplenum = None
@@ -66,37 +66,38 @@ class Decoder(srd.Decoder):
     def start(self):
         self.startedge = 0 if self.options['polarity'] == 'active-low' else 1
         self.out_ann = self.register(srd.OUTPUT_ANN)
-        self.out_bin = self.register(srd.OUTPUT_BINARY)
+        self.out_binary = self.register(srd.OUTPUT_BINARY)
         self.out_average = \
             self.register(srd.OUTPUT_META,
                           meta=(float, 'Average', 'PWM base (cycle) frequency'))
 
     def putx(self, data):
-        self.put(self.ss, self.es, self.out_ann, data)
+        self.put(self.ss_block, self.es_block, self.out_ann, data)
 
     def putp(self, period_t):
         # Adjust granularity.
         if period_t == 0 or period_t >= 1:
-            period_s = u'%u s' % (period_t)
+            period_s = '%.1f s' % (period_t)
         elif period_t <= 1e-12:
-            period_s = u'%.1f fs' % (period_t * 1e15)
+            period_s = '%.1f fs' % (period_t * 1e15)
         elif period_t <= 1e-9:
-            period_s = u'%.1f ps' % (period_t * 1e12)
+            period_s = '%.1f ps' % (period_t * 1e12)
         elif period_t <= 1e-6:
-            period_s = u'%.1f ns' % (period_t * 1e9)
+            period_s = '%.1f ns' % (period_t * 1e9)
         elif period_t <= 1e-3:
-            period_s = u'%.1f μs' % (period_t * 1e6)
+            period_s = '%.1f μs' % (period_t * 1e6)
         else:
-            period_s = u'%.1f ms' % (period_t * 1e3)
+            period_s = '%.1f ms' % (period_t * 1e3)
 
-        self.put(self.ss, self.es, self.out_ann, [1, [period_s]])
+        self.put(self.ss_block, self.es_block, self.out_ann, [1, [period_s]])
 
     def putb(self, data):
-        self.put(self.num_cycles, self.num_cycles, self.out_bin, data)
+        self.put(self.num_cycles, self.num_cycles, self.out_binary, data)
 
     def decode(self, ss, es, data):
 
         for (self.samplenum, pins) in data:
+            data.itercnt += 1
             # Ignore identical samples early on (for performance reasons).
             if self.oldpin == pins[0]:
                 continue
@@ -122,17 +123,17 @@ class Decoder(srd.Decoder):
                     ratio = float(duty / period)
 
                     # This interval starts at this edge.
-                    self.ss = self.start_samplenum
+                    self.ss_block = self.start_samplenum
                     # Store the new rising edge position and the ending
                     # edge interval.
-                    self.start_samplenum = self.es = self.samplenum
+                    self.start_samplenum = self.es_block = self.samplenum
 
                     # Report the duty cycle in percent.
                     percent = float(ratio * 100)
                     self.putx([0, ['%f%%' % percent]])
 
                     # Report the duty cycle in the binary output.
-                    self.putb((0, bytes([int(ratio * 256)])))
+                    #self.putb([0, bytes([int(ratio * 256)])])
 
                     # Report the period in units of time.
                     period_t = float(period / self.samplerate)
@@ -141,10 +142,10 @@ class Decoder(srd.Decoder):
                     # Update and report the new duty cycle average.
                     self.num_cycles += 1
                     self.average += percent
-                    self.put(self.first_samplenum, self.es, self.out_average,
+                    self.put(self.first_samplenum, self.es_block, self.out_average,
                              float(self.average / self.num_cycles))
                 else:
                     # Falling edge
-                    self.end_samplenum = self.ss = self.samplenum
+                    self.end_samplenum = self.ss_block = self.samplenum
 
             self.oldpin = pins[0]

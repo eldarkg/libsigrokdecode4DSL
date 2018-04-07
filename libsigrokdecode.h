@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Uwe Hermann <uwe@hermann-uwe.de>
  * Copyright (C) 2012 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +30,7 @@
 extern "C" {
 #endif
 
-struct srd_session;
+//struct srd_session;
 
 /**
  * @file
@@ -119,6 +120,16 @@ enum srd_loglevel {
 #define SRD_PRIV
 #endif
 
+struct srd_session {
+    int session_id;
+
+    /* List of decoder instances. */
+    GSList *di_list;
+
+    /* List of frontend callbacks to receive decoder output. */
+    GSList *callbacks;
+};
+
 /*
  * When adding an output type, don't forget to...
  *   - expose it to PDs in controller.c:PyInit_sigrokdecode()
@@ -166,6 +177,7 @@ struct srd_decoder {
 	 * supported annotation output.
 	 */
 	GSList *annotations;
+	GSList *ann_types;
 
 	/**
 	 * List of annotation rows (row items: id, description, and a list
@@ -221,6 +233,7 @@ struct srd_decoder_inst {
 	struct srd_decoder *decoder;
 	struct srd_session *sess;
 	void *py_inst;
+	void *py_logic;
 	char *inst_id;
 	GSList *pd_output;
 	int dec_num_channels;
@@ -228,6 +241,10 @@ struct srd_decoder_inst {
 	int data_unitsize;
 	uint8_t *channel_samples;
 	GSList *next_di;
+	uint64_t cur_pos;
+	uint64_t logic_mask;
+	uint64_t exp_logic;
+	int edge_index;
 };
 
 struct srd_pd_output {
@@ -249,12 +266,13 @@ struct srd_proto_data {
 };
 struct srd_proto_data_annotation {
 	int ann_class;
+	int ann_type;
 	char **ann_text;
 };
 struct srd_proto_data_binary {
 	int bin_class;
 	uint64_t size;
-	const unsigned char *data;
+	unsigned char *data;
 };
 
 typedef void (*srd_pd_output_callback)(struct srd_proto_data *pdata,
@@ -272,12 +290,12 @@ SRD_API int srd_exit(void);
 
 /* session.c */
 SRD_API int srd_session_new(struct srd_session **sess);
-SRD_API int srd_session_start(struct srd_session *sess);
+SRD_API int srd_session_start(struct srd_session *sess, char **error);
 SRD_API int srd_session_metadata_set(struct srd_session *sess, int key,
 		GVariant *data);
-SRD_API int srd_session_send(struct srd_session *sess,
+SRD_API int srd_session_send(struct srd_session *sess, uint8_t chunk_type,
 		uint64_t start_samplenum, uint64_t end_samplenum,
-		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize);
+		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize, char **error);
 SRD_API int srd_session_destroy(struct srd_session *sess);
 SRD_API int srd_pd_output_callback_add(struct srd_session *sess,
 		int output_type, srd_pd_output_callback cb, void *cb_data);

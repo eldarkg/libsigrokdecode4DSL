@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Uwe Hermann <uwe@hermann-uwe.de>
  * Copyright (C) 2012 Bert Vermeulen <bert@biot.com>
+ * Copyright (C) 2016 DreamSourceLab <support@dreamsourcelab.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -163,7 +164,7 @@ SRD_API int srd_inst_option_set(struct srd_decoder_inst *di,
 err_out:
 	Py_XDECREF(py_optval);
 	if (PyErr_Occurred()) {
-		srd_exception_catch("Stray exception in srd_inst_option_set().");
+		srd_exception_catch("Stray exception in srd_inst_option_set().", NULL);
 		ret = SRD_ERR_PYTHON;
 	}
 
@@ -341,7 +342,7 @@ SRD_API struct srd_decoder_inst *srd_inst_new(struct srd_session *sess,
 	/* Create a new instance of this decoder class. */
 	if (!(di->py_inst = PyObject_CallObject(dec->py_dec, NULL))) {
 		if (PyErr_Occurred())
-			srd_exception_catch("failed to create %s instance: ",
+			srd_exception_catch("failed to create %s instance: ", NULL,
 					decoder_id);
 		g_free(di->dec_channelmap);
 		g_free(di);
@@ -494,8 +495,9 @@ SRD_PRIV struct srd_decoder_inst *srd_inst_find_by_obj(const GSList *stack,
 }
 
 /** @private */
-SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di)
+SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di, char **error)
 {
+	srd_logic *logic;
 	PyObject *py_res;
 	GSList *l;
 	struct srd_decoder_inst *next_di;
@@ -505,16 +507,25 @@ SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di)
 			di->inst_id);
 
 	if (!(py_res = PyObject_CallMethod(di->py_inst, "start", NULL))) {
-		srd_exception_catch("Protocol decoder instance %s: ",
+		srd_exception_catch("Protocol decoder instance %s: ", error,
 				di->inst_id);
 		return SRD_ERR_PYTHON;
 	}
 	Py_DecRef(py_res);
 
+	if ((di->decoder->channels || di->decoder->opt_channels) != 0 ) {
+		logic = PyObject_New(srd_logic, &srd_logic_type);
+		//Py_INCREF(logic);
+		logic->di = (struct srd_decoder_inst *)di;
+		logic->sample = PyList_New(2);
+		//Py_INCREF(logic->sample);
+		di->py_logic = logic;
+	}
+
 	/* Start all the PDs stacked on top of this one. */
 	for (l = di->next_di; l; l = l->next) {
 		next_di = l->data;
-		if ((ret = srd_inst_start(next_di)) != SRD_OK)
+		if ((ret = srd_inst_start(next_di, error)) != SRD_OK)
 			return ret;
 	}
 
@@ -539,9 +550,9 @@ SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di)
  *
  * @since 0.4.0
  */
-SRD_PRIV int srd_inst_decode(const struct srd_decoder_inst *di,
+SRD_PRIV int srd_inst_decode(const struct srd_decoder_inst *di, uint8_t chunk_type,
 		uint64_t start_samplenum, uint64_t end_samplenum,
-		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize)
+		const uint8_t *inbuf, uint64_t inbuflen, uint64_t unitsize, char **error)
 {
 	PyObject *py_res;
 	srd_logic *logic;
@@ -572,24 +583,27 @@ SRD_PRIV int srd_inst_decode(const struct srd_decoder_inst *di,
 	 * Create new srd_logic object. Each iteration around the PD's loop
 	 * will fill one sample into this object.
 	 */
-	logic = PyObject_New(srd_logic, &srd_logic_type);
-	Py_INCREF(logic);
-	logic->di = (struct srd_decoder_inst *)di;
+	logic = di->py_logic;
 	logic->start_samplenum = start_samplenum;
-	logic->itercnt = 0;
+	if (chunk_type == 0) {
+		logic->itercnt = 0;
+		logic->logic_mask = 0;
+	}
 	logic->inbuf = (uint8_t *)inbuf;
 	logic->inbuflen = inbuflen;
-	logic->sample = PyList_New(2);
-	Py_INCREF(logic->sample);
+	Py_INCREF(logic);
 
-	Py_IncRef(di->py_inst);
+	//Py_IncRef(di->py_inst);
 	if (!(py_res = PyObject_CallMethod(di->py_inst, "decode",
 			"KKO", start_samplenum, end_samplenum, logic))) {
-		srd_exception_catch("Protocol decoder instance %s: ",
+		srd_exception_catch("Protocol decoder instance %s: ", error,
 				di->inst_id);
 		return SRD_ERR_PYTHON;
 	}
 	Py_DecRef(py_res);
+
+	if (logic->logic_mask == 0)
+		logic->itercnt -= logic->inbuflen / logic->di->data_unitsize;
 
 	return SRD_OK;
 }
@@ -599,12 +613,21 @@ SRD_PRIV void srd_inst_free(struct srd_decoder_inst *di)
 {
 	GSList *l;
 	struct srd_pd_output *pdo;
+	srd_logic *logic = di->py_logic;
 
 	srd_dbg("Freeing instance %s", di->inst_id);
+
+	if ((di->decoder->channels || di->decoder->opt_channels) != 0 ) {
+		if (logic && logic->sample)
+			Py_XDECREF(logic->sample);
+		if (logic)
+			Py_XDECREF(logic);
+	}
 
 	Py_DecRef(di->py_inst);
 	g_free(di->inst_id);
 	g_free(di->dec_channelmap);
+	g_free(di->channel_samples);
 	g_slist_free(di->next_di);
 	for (l = di->pd_output; l; l = l->next) {
 		pdo = l->data;

@@ -42,7 +42,7 @@ class Decoder(srd.Decoder):
         ('data', 'Stream data', (1,)),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.buf = []
         self.syncbuf = []
         self.prevsample = 0
@@ -58,13 +58,13 @@ class Decoder(srd.Decoder):
         if self.stream != stream:
             if self.stream != 0:
                 self.put(self.stream_ss, ss, self.out_ann,
-                         [0, ["Stream %d" % self.stream, "S%d" % self.stream]])
+                         [0, ['Stream %d' % self.stream, 'S%d' % self.stream]])
             self.stream = stream
             self.stream_ss = ss
 
     def emit_byte(self, ss, es, byte):
         if self.stream == self.options['stream']:
-            self.put(ss, es, self.out_ann, [1, ["0x%02x" % byte]])
+            self.put(ss, es, self.out_ann, [1, ['0x%02x' % byte]])
             self.put(ss, es, self.out_python, ['DATA', 0, (byte, [])])
 
     def process_frame(self, buf):
