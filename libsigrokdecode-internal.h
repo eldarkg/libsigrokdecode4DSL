@@ -112,7 +112,7 @@ SRD_PRIV GVariant *py_obj_to_variant(PyObject *py_obj);
  * will assume non-standard Microsoft printf syntax.
  */
 SRD_PRIV void srd_exception_catch(char **error, const char *format, ...)
-        __attribute__((__format__ (__gnu_printf__, 2, 3)));
+		__attribute__((__format__ (__gnu_printf__, 2, 3)));
 #else
 SRD_PRIV void srd_exception_catch(char **error, const char *format, ...) G_GNUC_PRINTF(2, 3);
 #endif

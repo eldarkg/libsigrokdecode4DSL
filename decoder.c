@@ -232,7 +232,7 @@ static int get_channels(const struct srd_decoder *d, const char *attr,
 	return SRD_OK;
 
 except_out:
-    srd_exception_catch(NULL, "Failed to get %s list of %s decoder",
+	srd_exception_catch(NULL, "Failed to get %s list of %s decoder",
 			attr, d->name);
 err_out:
 	g_slist_free_full(pdchl, &channel_free);
@@ -382,7 +382,7 @@ static int get_annotations(struct srd_decoder *dec)
 		goto err_out;
 	}
 
-    for (i = 0; i < PyTuple_Size(py_annlist); i++) {
+	for (i = 0; i < PyTuple_Size(py_annlist); i++) {
 		py_ann = PyTuple_GetItem(py_annlist, i);
 		if (!py_ann)
 			goto except_out;
@@ -390,7 +390,7 @@ static int get_annotations(struct srd_decoder *dec)
 		if (!PyTuple_Check(py_ann) || (PyTuple_Size(py_ann) != 3 && PyTuple_Size(py_ann) != 2)) {
 			srd_err("Protocol decoder %s annotation %zd should "
 				"be a tuple with two or three elements.",
-                dec->name, i);
+				dec->name, i + 1);
 			goto err_out;
 		}
 		if (py_strseq_to_char(py_ann, &annpair) != SRD_OK)
@@ -399,14 +399,14 @@ static int get_annotations(struct srd_decoder *dec)
 		annotations = g_slist_prepend(annotations, annpair);
 
 		if (PyTuple_Size(py_ann) == 3) {
-            ann_type = 0;
-            for (j = 0; j < strlen(annpair[0]); j++)
-                ann_type = ann_type * 10 + (annpair[0][j] - '0');
-            dec->ann_types = g_slist_append(dec->ann_types, GINT_TO_POINTER(ann_type));
-        } else if (PyTuple_Size(py_ann) == 2) {
-            dec->ann_types = g_slist_append(dec->ann_types, GINT_TO_POINTER(ann_type));
-            ann_type++;
-        }
+			ann_type = 0;
+		for (j = 0; j < strlen(annpair[0]); j++)
+			ann_type = ann_type * 10 + (annpair[0][j] - '0');
+		dec->ann_types = g_slist_append(dec->ann_types, GINT_TO_POINTER(ann_type));
+		} else if (PyTuple_Size(py_ann) == 2) {
+			dec->ann_types = g_slist_append(dec->ann_types, GINT_TO_POINTER(ann_type));
+			ann_type++;
+		}
 	}
 	dec->annotations = annotations;
 	Py_DECREF(py_annlist);
@@ -414,7 +414,7 @@ static int get_annotations(struct srd_decoder *dec)
 	return SRD_OK;
 
 except_out:
-    srd_exception_catch(NULL, "Failed to get %s decoder annotations", dec->name);
+	srd_exception_catch(NULL, "Failed to get %s decoder annotations", dec->name);
 err_out:
 	g_slist_free_full(annotations, (GDestroyNotify)&g_strfreev);
 	Py_XDECREF(py_annlist);
@@ -510,7 +510,7 @@ static int get_annotation_rows(struct srd_decoder *dec)
 	return SRD_OK;
 
 except_out:
-    srd_exception_catch(NULL, "Failed to get %s decoder annotation rows",
+	srd_exception_catch(NULL, "Failed to get %s decoder annotation rows",
 			dec->name);
 err_out:
 	g_slist_free_full(annotation_rows, &annotation_row_free);
@@ -566,7 +566,7 @@ static int get_binary_classes(struct srd_decoder *dec)
 	return SRD_OK;
 
 except_out:
-    srd_exception_catch(NULL, "Failed to get %s decoder binary classes",
+	srd_exception_catch(NULL, "Failed to get %s decoder binary classes",
 			dec->name);
 err_out:
 	g_slist_free_full(bin_classes, (GDestroyNotify)&g_strfreev);
@@ -585,8 +585,8 @@ static int check_method(PyObject *py_dec, const char *mod_name,
 
 	py_method = PyObject_GetAttrString(py_dec, method_name);
 	if (!py_method) {
-        srd_exception_catch(NULL, "Protocol decoder %s Decoder class "
-                "has no %s() method", mod_name, method_name);
+		srd_exception_catch(NULL, "Protocol decoder %s Decoder class "
+				"has no %s() method", mod_name, method_name);
 		return SRD_ERR_PYTHON;
 	}
 
@@ -641,7 +641,7 @@ SRD_API int srd_decoder_load(const char *module_name)
 	long apiver;
 	int is_subclass;
 	const char *fail_txt;
-	
+
 	if (!srd_check_init())
 		return SRD_ERR;
 
@@ -699,8 +699,8 @@ SRD_API int srd_decoder_load(const char *module_name)
 	 */
 	apiver = srd_decoder_apiver(d);
 	if (apiver != 2) {
-        srd_exception_catch(NULL, "Only PD API version 2 is supported, "
-            "decoder %s has version %ld", module_name, apiver);
+		srd_exception_catch(NULL, "Only PD API version 2 is supported, "
+			"decoder %s has version %ld", module_name, apiver);
 		fail_txt = "API version mismatch";
 		goto err_out;
 	}
@@ -784,11 +784,11 @@ SRD_API int srd_decoder_load(const char *module_name)
 
 except_out:
 	if (fail_txt) {
-        srd_exception_catch(NULL, "Failed to load decoder %s: %s",
+		srd_exception_catch(NULL, "Failed to load decoder %s: %s",
 				    module_name, fail_txt);
 		fail_txt = NULL;
 	} else {
-        srd_exception_catch(NULL, "Failed to load decoder %s", module_name);
+		srd_exception_catch(NULL, "Failed to load decoder %s", module_name);
 	}
 err_out:
 	if (fail_txt)

@@ -73,7 +73,7 @@ static PyObject *srd_logic_iternext(PyObject *self)
 	py_samplenum = PyLong_FromUnsignedLongLong(logic->start_samplenum + offset);
 	PyList_SetItem(logic->sample, 0, py_samplenum);
 	py_samples = PyBytes_FromStringAndSize((const char *)logic->di->channel_samples,
-						logic->di->dec_num_channels);
+					       logic->di->dec_num_channels);
 	PyList_SetItem(logic->sample, 1, py_samples);
 	Py_INCREF(logic->sample);
 

@@ -245,7 +245,7 @@ SRD_API int srd_session_send(struct srd_session *sess, uint8_t chunk_type,
 
 	for (d = sess->di_list; d; d = d->next) {
 		if ((ret = srd_inst_decode(d->data, chunk_type, start_samplenum,
-			end_samplenum, inbuf, inbuf_const, error)) != SRD_OK)
+				end_samplenum, inbuf, inbuf_const, error)) != SRD_OK)
 			return ret;
 	}
 

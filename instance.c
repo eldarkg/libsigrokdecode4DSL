@@ -165,7 +165,7 @@ SRD_API int srd_inst_option_set(struct srd_decoder_inst *di,
 err_out:
 	Py_XDECREF(py_optval);
 	if (PyErr_Occurred()) {
-		srd_exception_catch(NULL, "Stray exception in srd_inst_option_set().");
+		srd_exception_catch(NULL, "Stray exception in srd_inst_option_set()");
 		ret = SRD_ERR_PYTHON;
 	}
 
@@ -343,7 +343,7 @@ SRD_API struct srd_decoder_inst *srd_inst_new(struct srd_session *sess,
 	/* Create a new instance of this decoder class. */
 	if (!(di->py_inst = PyObject_CallObject(dec->py_dec, NULL))) {
 		if (PyErr_Occurred())
-			srd_exception_catch(NULL, "Failed to create %s instance: ",
+			srd_exception_catch(NULL, "Failed to create %s instance",
 					decoder_id);
 		g_free(di->dec_channelmap);
 		g_free(di);
@@ -508,7 +508,7 @@ SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di, char **error)
 			di->inst_id);
 
 	if (!(py_res = PyObject_CallMethod(di->py_inst, "start", NULL))) {
-		srd_exception_catch(error, "Decoder %s",
+		srd_exception_catch(error, "Protocol decoder instance %s",
 				di->inst_id);
 		return SRD_ERR_PYTHON;
 	}
@@ -522,7 +522,7 @@ SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di, char **error)
 		logic->sample = PyList_New(2);
 		//Py_INCREF(logic->sample);
 		di->py_logic = logic;
-	    }
+	}
 
 	/* Start all the PDs stacked on top of this one. */
 	for (l = di->next_di; l; l = l->next) {
@@ -535,7 +535,7 @@ SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di, char **error)
 }
 
 /**
- * Run the specified decoder function.
+ * Decode a chunk of samples.
  *
  * @param di The decoder instance to call. Must not be NULL.
  * @param start_samplenum The starting sample number for the buffer's sample
@@ -548,8 +548,6 @@ SRD_PRIV int srd_inst_start(struct srd_decoder_inst *di, char **error)
  * @return SRD_OK upon success, a (negative) error code otherwise.
  *
  * @private
- *
- * @since 0.4.0
  */
 SRD_PRIV int srd_inst_decode(const struct srd_decoder_inst *di, uint8_t chunk_type,
 		uint64_t start_samplenum, uint64_t end_samplenum,
@@ -591,7 +589,7 @@ SRD_PRIV int srd_inst_decode(const struct srd_decoder_inst *di, uint8_t chunk_ty
 	//Py_IncRef(di->py_inst);
 	if (!(py_res = PyObject_CallMethod(di->py_inst, "decode",
 			"KKO", start_samplenum, end_samplenum, logic))) {
-		srd_exception_catch(error, "Decoder %s",
+		srd_exception_catch(error, "Protocol decoder instance %s",
 				di->inst_id);
 		return SRD_ERR_PYTHON;
 	}

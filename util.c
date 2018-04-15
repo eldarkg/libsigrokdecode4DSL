@@ -22,7 +22,6 @@
 #include <config.h>
 #include "libsigrokdecode-internal.h" /* First, so we avoid a _POSIX_C_SOURCE warning. */
 #include "libsigrokdecode.h"
-#include "config.h"
 /**
  * Import a Python module by name.
  *
@@ -206,7 +205,7 @@ SRD_PRIV int py_strseq_to_char(PyObject *py_strseq, char ***out_strv)
 
 	seq_len = PySequence_Size(py_strseq);
 	if (seq_len < 0) {
-        srd_exception_catch(NULL, "Failed to obtain sequence size");
+		srd_exception_catch(NULL, "Failed to obtain sequence size");
 		return SRD_ERR_PYTHON;
 	}
 

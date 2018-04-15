@@ -115,10 +115,10 @@ SRD_PRIV void srd_exception_catch(char **error, const char *format, ...)
 	else
 		final_msg = g_strjoin(":", msg, etype_name_fallback, NULL);
 
-	srd_err("%s.", final_msg);
-
 	g_free(evalue_str);
 	g_free(etype_name);
+
+	srd_err("%s.", final_msg);
 
 	/* If there is no traceback object, we are done. */
 	if (!py_etraceback)
